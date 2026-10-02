@@ -7,7 +7,9 @@
 const CLAVE_BORRADOR_VIEJA = "cvlisto-borrador"; // de versiones anteriores, se borra al entrar
 const CLAVE_BORRADOR = "cv-generator-borrador";
 const VERSION_BORRADOR = 1; // subirla si cambia la forma del borrador, y migrar en migrarBorrador()
-const CAMPOS = ["nombre", "puesto", "email", "telefono", "ciudad", "linkedin", "perfil", "habilidades", "idiomas"];
+// Un campo nuevo que falta en un borrador viejo se carga vacío (ver aplicarDatos), así que sumar campos acá
+// no obliga a subir VERSION_BORRADOR. "nacimiento" es el valor oculto "AAAA-MM" de sus dos listas.
+const CAMPOS = ["nombre", "puesto", "email", "telefono", "ciudad", "linkedin", "nacimiento", "nacionalidad", "licencia", "perfil", "habilidades", "idiomas"];
 const MODELOS = ["moderno", "clasico", "ejecutivo", "creativo", "elegante", "destacado"];
 const MAX_ITEMS = { exp: 6, edu: 4 }; // máximo de trabajos y estudios para que el CV no se desarme
 
@@ -56,6 +58,14 @@ function iniciales(nombre) {
 
 function contactoDe(d) {
   return [["Email", d.email], ["Teléfono", d.telefono], ["Ubicación", d.ciudad], ["LinkedIn / Web", d.linkedin]]
+    .filter(([, valor]) => valor);
+}
+
+// Nacimiento (solo mes y año, sin día a propósito), nacionalidad y licencia: solo los que están completos
+function datosPersonalesDe(d) {
+  const m = /^(\d{4})-(\d{2})$/.exec(d.nacimiento || "");
+  const nacimiento = m ? `${MESES_LARGOS[Number(m[2]) - 1]} ${m[1]}` : "";
+  return [["Nacimiento", nacimiento], ["Nacionalidad", d.nacionalidad], ["Licencia de conducir", d.licencia]]
     .filter(([, valor]) => valor);
 }
 
@@ -111,33 +121,47 @@ function subtituloTrabajo(e) {
   return [e.empresa, e.ubicacion, periodo(e, "Actualidad")].filter(Boolean).join("  ·  ");
 }
 
-// Arma las dos listas (mes y año) de un campo de fecha y las conecta con su valor oculto ("2021-03")
+// Arma las dos listas (mes y año) de un campo de fecha y las conecta con su valor oculto ("2021-03").
+// Se puede volver a llamar para mostrar un valor oculto nuevo (nacimiento, al cargar un borrador o un ejemplo).
 function armarSelectorFecha(caja) {
   const mes = caja.querySelector(".fecha-mes");
   const anio = caja.querySelector(".fecha-anio");
   const oculto = caja.querySelector('input[type="hidden"]');
 
-  mes.innerHTML = '<option value="">Mes</option>' +
-    MESES_LARGOS.map((nombre, i) => `<option value="${String(i + 1).padStart(2, "0")}">${nombre}</option>`).join("");
-  let anios = '<option value="">Año</option>';
-  for (let a = ANIO_ACTUAL; a >= ANIO_MINIMO; a--) anios += `<option value="${a}">${a}</option>`;
-  anio.innerHTML = anios;
+  if (!caja.sincronizar) {
+    mes.innerHTML = '<option value="">Mes</option>' +
+      MESES_LARGOS.map((nombre, i) => `<option value="${String(i + 1).padStart(2, "0")}">${nombre}</option>`).join("");
+    let anios = '<option value="">Año</option>';
+    for (let a = ANIO_ACTUAL; a >= ANIO_MINIMO; a--) anios += `<option value="${a}">${a}</option>`;
+    anio.innerHTML = anios;
+
+    caja.sincronizar = () => {
+      // En el año en curso no se pueden elegir meses que todavía no llegaron
+      const esteAnio = Number(anio.value) === ANIO_ACTUAL;
+      [...mes.options].forEach((op) => (op.disabled = Boolean(op.value) && esteAnio && Number(op.value) > NUM_MES_ACTUAL));
+      if (mes.selectedOptions[0]?.disabled) mes.value = "";
+      oculto.value = anio.value ? (mes.value ? `${anio.value}-${mes.value}` : anio.value) : "";
+    };
+    // Se ejecuta antes que el aviso general del formulario, así la vista previa ya ve la fecha nueva
+    mes.addEventListener("input", caja.sincronizar);
+    anio.addEventListener("input", caja.sincronizar);
+  }
 
   const [a, m] = (oculto.value || "").split("-");
   anio.value = a || "";
   mes.value = m || "";
+  caja.sincronizar();
+}
 
-  const sincronizar = () => {
-    // En el año en curso no se pueden elegir meses que todavía no llegaron
-    const esteAnio = Number(anio.value) === ANIO_ACTUAL;
-    [...mes.options].forEach((op) => (op.disabled = Boolean(op.value) && esteAnio && Number(op.value) > NUM_MES_ACTUAL));
-    if (mes.selectedOptions[0]?.disabled) mes.value = "";
-    oculto.value = anio.value ? (mes.value ? `${anio.value}-${mes.value}` : anio.value) : "";
-  };
-  // Se ejecuta antes que el aviso general del formulario, así la vista previa ya ve la fecha nueva
-  mes.addEventListener("input", sincronizar);
-  anio.addEventListener("input", sincronizar);
-  sincronizar();
+// Nacimiento es opcional, pero si se usa hacen falta mes y año: nunca mostramos una fecha a medias
+function validarNacimiento() {
+  const caja = $("campo-nacimiento");
+  const mes = caja.querySelector(".fecha-mes").value;
+  const anio = caja.querySelector(".fecha-anio").value;
+  const error = mes && !anio ? "Elegí también el año." : anio && !mes ? "Elegí también el mes." : "";
+  caja.querySelector(".fecha-error").textContent = error;
+  caja.classList.toggle("fecha-invalida", Boolean(error));
+  return !error;
 }
 
 // Para comparar fechas con o sin mes: "2021" cuenta como enero (inicio) o diciembre (fin)
@@ -283,6 +307,16 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
     ? `<div class="cv-block"><h4>Contacto</h4>${contacto.map(([k, v]) => `<p class="cv-label">${k}</p><p class="cv-val">${esc(v)}</p>`).join("")}</div>`
     : `<div class="cv-block"><h4>Contacto</h4><p class="cv-val ph">Tu email y teléfono</p></div>`;
 
+  // Nacimiento, nacionalidad y licencia: en las columnas van como bloque propio y en Clásico y Destacado,
+  // como una línea "Nacimiento: Septiembre 1990 · Nacionalidad: Argentina" debajo del contacto
+  const personales = datosPersonalesDe(d);
+  const bloquePersonal = personales.length
+    ? `<div class="cv-block"><h4>Datos personales</h4>${personales.map(([k, v]) => `<p class="cv-label">${k}</p><p class="cv-val">${esc(v)}</p>`).join("")}</div>`
+    : "";
+  const lineaPersonal = (clase, sep) => personales.length
+    ? `<p class="${clase}">${personales.map(([k, v]) => `${k}: ${esc(v)}`).join(`<span class="sep">${sep}</span>`)}</p>`
+    : "";
+
   const lista = (nombre, items) => items.length
     ? `<div class="cv-block"><h4>${nombre}</h4><ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>`
     : "";
@@ -324,6 +358,7 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
         <div class="cvk-main">${perfil}${experiencia}${educacion}</div>
         <aside class="cvk-aside">
           ${bloqueContacto}
+          ${bloquePersonal}
           ${etiquetas("Habilidades", d.listaHabilidades)}
           ${etiquetas("Idiomas", d.listaIdiomas)}
         </aside>
@@ -336,6 +371,7 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
       <aside class="cvl-side">
         ${foto}
         ${bloqueContacto}
+        ${bloquePersonal}
         ${etiquetas("Habilidades", d.listaHabilidades)}
         ${lista("Idiomas", d.listaIdiomas)}
       </aside>
@@ -348,7 +384,7 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
       ? contacto.map(([, v]) => esc(v)).join('<span class="sep">·</span>')
       : '<span class="ph">Tu email · teléfono · ciudad</span>';
     destino.innerHTML = `
-      <header class="cvd-head">${foto}${cabecera}<p class="cvd-contacto">${lineaContacto}</p></header>
+      <header class="cvd-head">${foto}${cabecera}<p class="cvd-contacto">${lineaContacto}</p>${lineaPersonal("cvd-contacto", "·")}</header>
       <div class="cvd-body">
         <div class="cvd-main">${perfil}${experiencia}${educacion}</div>
         <aside class="cvd-aside">
@@ -369,7 +405,7 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
     destino.innerHTML = `
       <header class="cvc-head">
         ${fotoSrc ? foto : ""}
-        <div class="cvc-id">${cabecera}<p class="cvc-contacto">${lineaContacto}</p></div>
+        <div class="cvc-id">${cabecera}<p class="cvc-contacto">${lineaContacto}</p>${lineaPersonal("cvc-contacto", "|")}</div>
       </header>
       ${perfil}${experiencia}${educacion}
       ${listaEnLinea("Habilidades", d.listaHabilidades)}
@@ -384,6 +420,7 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
         <div class="cve-main">${perfil}${experiencia}${educacion}</div>
         <aside class="cve-aside">
           ${bloqueContacto}
+          ${bloquePersonal}
           ${lista("Habilidades", d.listaHabilidades)}
           ${lista("Idiomas", d.listaIdiomas)}
         </aside>
@@ -395,6 +432,7 @@ function renderVistaPrevia(d, destino = preview, fotoSrc = fotoCuadrada) {
     <aside class="cv-side">
       ${foto}
       ${bloqueContacto}
+      ${bloquePersonal}
       ${lista("Habilidades", d.listaHabilidades)}
       ${lista("Idiomas", d.listaIdiomas)}
     </aside>
@@ -410,6 +448,8 @@ function marcarRadio(nombre, valor) {
 
 function aplicarDatos(b) {
   CAMPOS.forEach((id) => ($(id).value = b.campos?.[id] || ""));
+  armarSelectorFecha($("campo-nacimiento")); // pasa el valor oculto a las listas de mes y año
+  validarNacimiento();
   listaDe("exp").innerHTML = "";
   listaDe("edu").innerHTML = "";
   (b.experiencia?.length ? b.experiencia : [{}]).slice(0, MAX_ITEMS.exp).forEach((e) => agregarItem("exp", e));
@@ -554,6 +594,7 @@ form.addEventListener("input", (e) => {
   if (e.target.id === "nombre") $("nombre").closest("label").classList.remove("has-error");
   const item = e.target.closest(".item");
   if (item) validarFechas(item);
+  if (e.target.closest("#campo-nacimiento")) validarNacimiento();
   actualizar();
 });
 
@@ -779,6 +820,9 @@ const EJEMPLO = {
     telefono: "+54 11 5555-1234",
     ciudad: "Córdoba, Argentina",
     linkedin: "linkedin.com/in/luciafernandez",
+    nacimiento: "1994-06",
+    nacionalidad: "Argentina",
+    licencia: "B1",
     perfil: "Administrativa con 5 años de experiencia en facturación, cuentas a pagar y atención a proveedores. Organizada, detallista y con muchas ganas de sumar a un equipo en crecimiento.",
     habilidades: "Excel avanzado, Tango Gestión, Facturación electrónica, Atención al cliente, Trabajo en equipo",
     idiomas: "Español (nativo), Inglés (intermedio)",
@@ -1170,6 +1214,15 @@ function columnaLateral(c, d, x, w, yInicial, colores) {
     });
     y += 4;
   }
+  // En Destacado (sinContacto) los datos personales van en el encabezado, junto al contacto
+  const personales = colores.sinContacto ? [] : datosPersonalesDe(d);
+  if (personales.length && titulo("Datos personales")) {
+    personales.forEach(([etiqueta, valor]) => {
+      y = c.texto(etiqueta, x, y, w, 7.5, colores.etiqueta, "bold", 1.3);
+      y = c.texto(valor, x, y, w, 9, colores.valor, "normal", 1.35) + 2.5;
+    });
+    y += 4;
+  }
   if (d.listaHabilidades.length && titulo("Habilidades")) (colores.chip ? etiquetas : lista)(d.listaHabilidades);
   if (d.listaIdiomas.length && titulo("Idiomas")) (colores.chip && !colores.idiomasEnLista ? etiquetas : lista)(d.listaIdiomas);
 }
@@ -1215,6 +1268,8 @@ function pdfClasico(c, d, fotoPdf) {
   if (d.puesto) y = c.texto(d.puesto, x, y + 0.5, anchoTexto, 12, c.ACENTO, "normal", 1.3);
   const contacto = contactoDe(d).map(([, v]) => v).join("   |   ");
   if (contacto) y = c.texto(contacto, x, y + 1.5, anchoTexto, 9, c.GRIS, "normal", 1.4);
+  const personales = datosPersonalesDe(d).map(([k, v]) => `${k}: ${v}`).join("   |   ");
+  if (personales) y = c.texto(personales, x, y + 0.5, anchoTexto, 9, c.GRIS, "normal", 1.4);
 
   y = Math.max(y, fotoPdf ? Y_FOTO + FOTO + 4 : 0) + 2;
   doc.setDrawColor(...c.ACENTO);
@@ -1314,6 +1369,8 @@ function pdfDestacado(c, d, fotoPdf) {
   if (d.puesto) y = c.centrado(d.puesto, y + 0.5, 12, c.ACENTO, "normal", 170, 1.3);
   const contacto = contactoDe(d).map(([, v]) => v).join("   ·   ");
   if (contacto) y = c.centrado(contacto, y + 1.5, 8.5, c.GRIS, "normal", 178, 1.4);
+  const personales = datosPersonalesDe(d).map(([k, v]) => `${k}: ${v}`).join("   ·   ");
+  if (personales) y = c.centrado(personales, y + 0.5, 8.5, c.GRIS, "normal", 178, 1.4);
   y += 9;
 
   columnaLateral(c, d, 146, 48, y, {
@@ -1331,6 +1388,11 @@ async function generarPDF() {
     $("nombre").scrollIntoView({ behavior: "smooth", block: "center" });
     $("nombre").focus({ preventScroll: true });
     return mostrarAviso("Falta tu nombre para generar el CV.", true);
+  }
+
+  if (!validarNacimiento()) {
+    $("campo-nacimiento").scrollIntoView({ behavior: "smooth", block: "center" });
+    return mostrarAviso("Completá mes y año de nacimiento, o dejá los dos vacíos.", true);
   }
 
   const conError = [...form.querySelectorAll(".item")].filter((item) => !validarFechas(item));

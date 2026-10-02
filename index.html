@@ -170,6 +170,18 @@
               <label>LinkedIn o web
                 <input type="text" id="linkedin" maxlength="100" placeholder="linkedin.com/in/tu-perfil">
               </label>
+              <div class="campo-fecha" id="campo-nacimiento">
+                <span class="campo-label">Mes y año de nacimiento</span>
+                <div class="fecha"><select class="fecha-mes" aria-label="Mes de nacimiento"></select><select class="fecha-anio" aria-label="Año de nacimiento"></select></div>
+                <input type="hidden" id="nacimiento">
+                <p class="error-msg fecha-error" role="alert"></p>
+              </div>
+              <label>Nacionalidad
+                <input type="text" id="nacionalidad" maxlength="40" placeholder="Ej: Argentina">
+              </label>
+              <label>Licencia de conducir
+                <input type="text" id="licencia" maxlength="30" placeholder="Ej: B1">
+              </label>
             </div>
             <label>Sobre mí
               <textarea id="perfil" rows="4" maxlength="700" placeholder="2 o 3 líneas contando quién sos, qué sabés hacer y qué estás buscando."></textarea>

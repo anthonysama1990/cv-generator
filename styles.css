@@ -276,8 +276,9 @@ legend { font-weight: 700; color: var(--ink); font-size: 1.05rem; padding: 0 6px
 .fecha select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(2, 132, 199, .15); }
 .fecha select:disabled { background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
 .fecha-error { margin: -6px 0 14px; }
-.item.fecha-invalida .fecha-error { display: block; }
-.item.fecha-invalida .fecha select:not(:disabled) { border-color: var(--danger); }
+.item.fecha-invalida .fecha-error, .campo-fecha.fecha-invalida .fecha-error { display: block; }
+.item.fecha-invalida .fecha select:not(:disabled), .campo-fecha.fecha-invalida .fecha select { border-color: var(--danger); }
+.campo-fecha .fecha-error { margin: 4px 0 0; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .hint { font-size: .82rem; color: var(--muted); margin: 6px 0 0; }
 .hint-inline { font-weight: 400; color: var(--muted); }
@@ -546,6 +547,7 @@ legend { font-weight: 700; color: var(--ink); font-size: 1.05rem; padding: 0 6px
 .modelo-clasico .cv-role { margin: .6cqw 0 1cqw; font-size: 2cqw; }
 .cvc-contacto { margin: 0; font-size: 1.5cqw; overflow-wrap: anywhere; }
 .cvc-contacto .sep { margin: 0 1.2cqw; color: #9ca3af; }
+.cvc-contacto + .cvc-contacto, .cvd-contacto + .cvd-contacto { margin-top: .6cqw; }
 
 /* --- Modelo Ejecutivo: encabezado de color y columna clara a la derecha --- */
 .modelo-ejecutivo { display: flex; flex-direction: column; }
